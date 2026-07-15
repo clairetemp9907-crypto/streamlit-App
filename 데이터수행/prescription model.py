@@ -9,8 +9,8 @@ from sklearn.preprocessing import LabelEncoder
 st.set_page_config(
     page_title="스마트 처방 가이드 시스템",
     page_icon="🏥",
-    layout="wide",  # 화면을 넓게 써서 사이드바와 본문이 한눈에 보이게 합니다.
-    initial_sidebar_state="expanded"  # ⭐ 핵심: 앱 접속 시 사이드바를 무조건 펼쳐서 시작합니다!
+    layout="wide",  # 화면을 넓게 활용하여 가독성을 높입니다.
+    initial_sidebar_state="expanded"  # 앱 시작 시 왼쪽 입력 사이드바를 항상 펼쳐둡니다.
 )
 
 # ==========================================
@@ -18,17 +18,21 @@ st.set_page_config(
 # ==========================================
 @st.cache_data
 def load_data_and_train_model():
+    # 1. 국내 공공데이터 로드 (한글 인코딩 및 양끝 공백 전처리 완료)
     try:
         public_data = pd.read_csv('한국의약품안전관리원_용량주의약물_20240501.csv', encoding='cp949')
     except FileNotFoundError:
+        # 파일이 없을 때를 대비한 백업 데이터
         data_placeholder = {
-            '성분명': ['Acetaminophen', 'Propacetamol', 'Enalapril', 'Carvedilol', 'Atorvastatin', 'Ibuprofen'],
-            '1일최대 투여기준량': [4000.0, 8000.0, 40.0, 100.0, 20.0, 3200.0]
+            '성분명': ['Acetaminophen', 'Enalapril', 'Carvedilol', 'Atorvastatin', 'Ibuprofen'],
+            '1일최대 투여기준량': [4000.0, 40.0, 100.0, 20.0, 3200.0]
         }
         public_data = pd.DataFrame(data_placeholder)
         
+    # 성분명 대소문자를 소문자로 통일하고 양끝의 보이지 않는 공백을 제거합니다.
     public_data['성분명_정제'] = public_data['성분명'].astype(str).str.strip().str.lower()
     
+    # 2. 캐글 약물 분류 기준 데이터 임의 학습 (데모용)
     data_demo = {
         'Age': [23, 47, 56, 34, 18, 62, 73, 42],
         'Sex': ['F', 'M', 'F', 'M', 'F', 'M', 'F', 'M'],
@@ -58,14 +62,39 @@ def load_data_and_train_model():
 public_data_cleaned, ml_model, le_sex, le_bp, le_chol = load_data_and_train_model()
 
 # ==========================================
-# 💊 [약물 매칭 가이드라인 정의]
+# 💊 [약물 매칭 가이드라인 정의] - 검증된 성분만 포함
 # ==========================================
 drug_multimapping = {
-    'DrugY': ['acetaminophen', 'propacetamol', 'acetaminophen/pamabrom'],
-    'drugA': ['enalapril', 'captopril', 'ramipril', 'alacepril'],
-    'drugB': ['carvedilol', 'amlodipine', 'nifedipine', 'felodipine', 'atenolol', 'bisoprolol', 'losartan', 'valsartan', 'irbesartan'],
-    'drugC': ['atorvastatin', 'rosuvastatin', 'fluvastatin', 'lovastatin', 'pitavastatin'],
-    'drugX': ['ibuprofen', 'naproxen', 'dexibuprofen', 'loxoprofen', 'diclofenac']
+    'DrugY': [
+        'acetaminophen'
+    ], # 전해질 안심형 범용 해열진통 계열
+    
+    'drugA': [
+        'enalapril', 
+        'captopril', 
+        'ramipril'
+    ], # 젊은 층 (50세 미만) 전해질 민감성 고혈압약
+    
+    'drugB': [
+        'carvedilol', 'amlodipine', 'nifedipine', 'felodipine', 
+        'atenolol', 'bisoprolol', 'losartan', 'valsartan', 'irbesartan'
+    ], # 고령 층 (50세 이상) 전해질 민감성 고혈압약
+    
+    'drugC': [
+        'atorvastatin', 
+        'rosuvastatin', 
+        'fluvastatin', 
+        'lovastatin', 
+        'pitavastatin'
+    ], # 전해질 민감성 고지혈증약
+    
+    'drugX': [
+        'ibuprofen', 
+        'naproxen', 
+        'dexibuprofen', 
+        'loxoprofen', 
+        'diclofenac'
+    ] # 전해질 민감성 일반 소염진통제
 }
 
 # ==========================================
@@ -75,7 +104,7 @@ st.title("🏥 실시간 스마트 처방 가이드 시스템")
 st.markdown("환자의 생체 정보 데이터를 기반으로 안전한 추천 의약품 목록과 식약처 기준 맞춤형 적정 용량을 자동 계산합니다.")
 st.write("---")
 
-# 1. 좌측 사이드바: 환자 생체 지표 입력 영역 (항상 열려있음)
+# 1. 좌측 사이드바: 환자 생체 지표 입력 영역
 st.sidebar.header("👤 환자 생체 지표 입력")
 input_age = st.sidebar.number_input("만 나이", min_value=1, max_value=120, value=25, step=1)
 input_sex = st.sidebar.selectbox("성별", options=["M", "F"])
@@ -118,7 +147,7 @@ if selected_substance:
         base_max_limit = float(matching_row['1일최대 투여기준량'].iloc[0])
         final_max_limit = base_max_limit
         
-        # 연령 필터 적용
+        # 연령 필터 적용 (만 12세 미만 소아 감량)
         is_pediatric = input_age < 12
         if is_pediatric:
             final_max_limit = base_max_limit * 0.5
@@ -137,4 +166,4 @@ if selected_substance:
             
         st.warning(f"**적용 조건 및 의학적 근거**\n\n{filter_reason}")
     else:
-        st.error(f"오류: 공공데이터베이스에서 [{selected_substance}] 성분의 용량 기준을 찾을 수 없습니다.")    
+        st.error(f"오류: 공공데이터베이스에서 [{selected_substance}] 성분의 용량 기준을 찾을 수 없습니다.")
