@@ -2,169 +2,106 @@ import streamlit as st
 import pandas as pd
 import folium
 from streamlit_folium import st_folium
-from geopy.geocoders import Nominatim
-from geopy.distance import geodesic
 
-st.set_page_config(page_title="공영주차장 추천", layout="wide")
-
-st.title("🚗 공영주차장 추천 서비스")
-
-####################################
-# 캐릭터
-####################################
-
-st.sidebar.header("캐릭터")
-
-character = st.sidebar.file_uploader(
-    "캐릭터 이미지를 업로드하세요",
-    type=["png","jpg","jpeg"]
+st.set_page_config(
+    page_title="서울시 공영주차장 안내",
+    page_icon="🅿️",
+    layout="wide"
 )
 
-if character is not None:
-    st.sidebar.image(character, width=220)
-
-st.info("💬 지금 어디야? 현재 주소를 입력해줘!")
-
-####################################
-# CSV 업로드
-####################################
+st.title("🅿️ 서울시 공영주차장 안내 서비스")
 
 uploaded_file = st.file_uploader(
-    "공영주차장 CSV 업로드",
+    "서울시 공영주차장 CSV 업로드",
     type="csv"
 )
 
-if uploaded_file is None:
-    st.stop()
+if uploaded_file is not None:
 
-####################################
-# CSV 읽기
-####################################
-
-try:
     df = pd.read_csv(uploaded_file, encoding="cp949")
-except:
-    df = pd.read_csv(uploaded_file, encoding="utf-8")
 
-####################################
-# 컬럼명 확인
-####################################
+    # 위도/경도 없는 데이터 제거
+    df = df.dropna(subset=["위도", "경도"])
 
-required = [
-    "주차장명",
-    "주소",
-    "위도",
-    "경도",
-    "기본 주차 요금",
-    "기본 주차 시간(분 단위)"
-]
+    st.success(f"총 {len(df)}개의 주차장 정보를 불러왔습니다.")
 
-for c in required:
-    if c not in df.columns:
-        st.error(f"'{c}' 컬럼이 없습니다.")
-        st.stop()
+    ##############################################
+    # 주소 검색
+    ##############################################
 
-df = df.dropna(subset=["위도","경도"])
+    st.header("📍 주소 검색")
 
-####################################
-# 주소 입력
-####################################
+    keyword = st.text_input("주소를 입력하세요")
 
-address = st.text_input("현재 주소를 입력하세요")
+    if keyword:
 
-if address == "":
-    st.stop()
+        result = df[df["주소"].str.contains(keyword, na=False)]
 
-####################################
-# 주소 → 좌표
-####################################
+        if len(result) == 0:
+            st.warning("검색 결과가 없습니다.")
 
-geolocator = Nominatim(user_agent="parking")
+        else:
 
-location = geolocator.geocode(address)
+            st.subheader("검색 결과")
 
-if location is None:
-    st.error("주소를 찾을 수 없습니다.")
-    st.stop()
+            for _, row in result.iterrows():
 
-user = (location.latitude, location.longitude)
+                st.markdown(f"""
+### {row['주차장명']}
 
-####################################
-# 거리 계산
-####################################
+**주소** : {row['주소']}
 
-distance_list = []
+**기본요금** : {row['기본 주차 요금']}원
 
-for _, row in df.iterrows():
+**기본시간** : {row['기본 주차 시간(분 단위)']}분
 
-    d = geodesic(
-        user,
-        (row["위도"], row["경도"])
-    ).km
+**추가요금** : {row['추가 단위 요금']}원
 
-    distance_list.append(d)
+**추가시간** : {row['추가 단위 시간(분 단위)']}분
 
-df["거리"] = distance_list
-
-nearest = df.sort_values("거리").head(3)
-
-####################################
-# 추천 결과
-####################################
-
-st.header("🏆 가장 가까운 공영주차장")
-
-for i, (_, row) in enumerate(nearest.iterrows(), start=1):
-
-    st.markdown(f"""
-### {i}위 : {row['주차장명']}
-
-📍 주소 : {row['주소']}
-
-📏 거리 : **{row['거리']:.2f} km**
-
-💰 기본요금 : **{row['기본 주차 요금']}원**
-
-⏰ 기본시간 : **{row['기본 주차 시간(분 단위)']}분**
+**일 최대요금** : {row['일 최대 요금']}원
 """)
 
-####################################
-# 지도
-####################################
+    ##############################################
+    # 지도
+    ##############################################
 
-m = folium.Map(
-    location=user,
-    zoom_start=14
-)
+    st.header("🗺️ 공영주차장 지도")
 
-folium.Marker(
-    user,
-    tooltip="현재 위치",
-    icon=folium.Icon(color="red")
-).add_to(m)
+    m = folium.Map(
+        location=[37.5665,126.9780],
+        zoom_start=11
+    )
 
-for _, row in nearest.iterrows():
+    for _, row in df.iterrows():
 
-    tooltip = f"""
-{row['주차장명']}
-
-{row['주소']}
-
-기본요금 : {row['기본 주차 요금']}원
-"""
-
-    popup = f"""
+        popup = f"""
 <b>{row['주차장명']}</b><br>
+
 주소 : {row['주소']}<br>
-거리 : {row['거리']:.2f} km<br>
-기본요금 : {row['기본 주차 요금']}원
+
+기본요금 : {row['기본 주차 요금']}원<br>
+
+기본시간 : {row['기본 주차 시간(분 단위)']}분
 """
 
-    folium.Marker(
-        [row["위도"], row["경도"]],
-        tooltip=tooltip,
-        popup=popup,
-        icon=folium.Icon(color="blue")
-    ).add_to(m)
+        tooltip = f"""
+{row['주차장명']}
+<br>
+{row['주소']}
+<br>
+{row['기본 주차 요금']}원
+"""
 
-st_folium(m, width=1000, height=650)
+        folium.Marker(
+            location=[row["위도"], row["경도"]],
+            popup=popup,
+            tooltip=tooltip,
+            icon=folium.Icon(color="blue", icon="info-sign")
+        ).add_to(m)
+
+    st_folium(
+        m,
+        width=1200,
+        height=700
+    )
