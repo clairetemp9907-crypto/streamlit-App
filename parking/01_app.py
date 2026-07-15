@@ -18,8 +18,7 @@ st.title("🚗 공영주차장 추천 서비스")
 col1, col2 = st.columns([1,3])
 
 with col1:
-    st.image("character.png", width=220)
-
+    st.image("우진형.jpg", width=220)
 with col2:
     st.info("💬 **지금 어디야?**\n\n현재 주소를 입력해줘!")
 
