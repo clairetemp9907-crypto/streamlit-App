@@ -3,4 +3,5 @@ google-api-python-client
 pandas
 matplotlib
 wordcloud
-konlpy
+plotly
+requests>=2.32,<3.0
